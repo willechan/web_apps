@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>消消乐游戏</title>
+    <style>
+        :root {
+            --game-board-size: 320px; /* Base size for 8x8 board */
+            --tile-size: calc(var(--game-board-size) / 8);
+            --tile-border-radius: 5px;
+            --score-color: #333;
+            --level-color: #333;
+            --text-color: #555;
+            --button-bg: #4CAF50;
+            --button-hover-bg: #45a049;
+            --button-text: white;
+            --modal-bg: rgba(0, 0, 0, 0.7);
+            --modal-content-bg: #fefefe;
+            --modal-border: 1px solid #888;
+            --celebration-color: #FFD700; /* Gold */
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #f0e68c, #add8e6); /* Light Khaki to Light Blue */
+            color: var(--text-color);
+            overflow: hidden;
+            padding: 10px;
+        }
+
+        .game-container {
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            text-align: center;
+            max-width: var(--game-board-size); /* Limit width for responsiveness */
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .score-display, .level-display, .timer-display {
+            background-color: #eee;
+            padding: 8px 15px;
+            border-radius: 8px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+            min-width: 80px; /* Ensure timer has space */
+        }
+        
+        .timer-display {
+            display: none; /* Hidden by default, shown from level 10 */
+        }
+
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(8, var(--tile-size));
+            grid-template-rows: repeat(8, var(--tile-size));
+            width: var(--game-board-size);
+            height: var(--game-board-size);
+            border: 5px solid #8b4513; /* SaddleBrown */
+            border-radius: 10px;
+            background-color: #c2b280; /* Khaki-ish */
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+            position: relative; /* For absolutely positioned tiles */
+            overflow: hidden; /* Hide falling tiles initially */
+            touch-action: none; /* Disable default touch actions */
+        }
+
+        .tile {
+            width: var(--tile-size);
+            height: var(--tile-size);
+            background-color: #ccc; /* Default color */
+            border-radius: var(--tile-border-radius);
+            box-sizing: border-box;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: transform 0.15s ease-in-out, opacity 0.3s ease-out, top 0.3s ease-out, left 0.3s ease-in-out; /* Added left to transition */
+            position: absolute; /* Allows for animated movement */
+        }
+
+        /* Tile colors - you can use emojis or simple shapes later */
+        .tile.type-0 { background-color: #ff7f7f; } /* Red */
+        .tile.type-1 { background-color: #7fbfff; } /* Blue */
+        .tile.type-2 { background-color: #7fff7f; } /* Green */
+        .tile.type-3 { background-color: #ffff7f; } /* Yellow */
+        .tile.type-4 { background-color: #ff7fff; } /* Magenta */
+        .tile.type-5 { background-color: #7fffff; } /* Cyan */
+        .tile.type-6 { background-color: #cccccc; } /* Grey - for higher levels */
+        .tile.type-7 { background-color: #ffcc99; } /* Peach */
+        .tile.type-8 { background-color: #9966cc; } /* Purple */
+
+        .tile.selected {
+            border: 3px solid #ffd700; /* Gold border for selected */
+            transform: scale(0.9);
+            box-shadow: 0 0 10px var(--celebration-color);
+        }
+
+        /* Ice Breaking Effect */
+        .tile.matched {
+            animation: shatter 0.3s forwards;
+        }
+
+        @keyframes shatter {
+            0% { transform: scale(1) rotate(0deg); opacity: 1; }
+            50% { transform: scale(1.1) rotate(10deg); opacity: 0.8; }
+            100% { transform: scale(0) rotate(-20deg); opacity: 0; }
+        }
+
+
+        /* Combo Text */
+        .combo-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3em;
+            font-weight: bold;
+            color: #FFD700; /* Gold */
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            z-index: 5;
+            opacity: 0;
+            animation: comboPop 1s forwards;
+            pointer-events: none;
+        }
+
+        @keyframes comboPop {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+        }
+
+
+        /* Modal for messages */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 10; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            background-color: var(--modal-bg);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: var(--modal-content-bg);
+            margin: auto;
+            padding: 30px;
+            border: var(--modal-border);
+            border-radius: 10px;
+            width: 80%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal-content h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 2em;
+        }
+
+        .modal-content p {
+            margin-bottom: 25px;
+            font-size: 1.2em;
+            line-height: 1.5;
+        }
+
+        .modal-buttons button {
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.1em;
+            margin: 0 10px;
+            transition: background-color 0.2s;
+        }
+
+        .modal-buttons button:hover {
+            background-color: var(--button-hover-bg);
+        }
+
+        /* Music Toggle Button */
+        #musicToggleButton {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 1.5em;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 20;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+
+        #musicToggleButton:hover {
+            background-color: var(--button-hover-bg);
+        }
+
+        /* Celebration Effect - for level clear */
+        .celebration-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allow clicks to pass through */
+            z-index: 99;
+            display: none; /* Hidden by default */
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: var(--celebration-color);
+            animation: confetti-fall linear infinite;
+        }
+
+        /* Basic Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes confetti-fall {
+            0% { transform: translateY(-10vh) rotateZ(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotateZ(720deg); opacity: 0; }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 450px) {
+            :root {
+                --game-board-size: 280px;
+            }
+            .game-container {
+                padding: 15px;
+                gap: 10px;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            .game-info {
+                font-size: 1em;
+            }
+            .modal-content {
+                width: 95%;
+                padding: 20px;
+            }
+            .modal-content h2 {
+                font-size: 1.8em;
+            }
+            .modal-content p {
+                font-size: 1.1em;
+            }
+            .modal-buttons button {
+                padding: 10px 20px;
+                font-size: 1em;
+                margin: 0 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>消消乐游戏</h1>
+        <div class="game-info">
+            <div class="score-display">分数: <span id="score">0</span></div>
+            <div class="level-display">关卡: <span id="level">1</span></div>
+            <div class="timer-display">时间: <span id="timer">0</span>s</div>
+        </div>
+        <div class="game-board" id="gameBoard">
+            <!-- Tiles will be rendered here by JavaScript -->
+            <div id="comboText" class="combo-text"></div>
+        </div>
+    </div>
+
+    <!-- Modal for messages (Level Complete, Game Over) -->
+    <div id="gameModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">关卡完成!</h2>
+            <p id="modalMessage">恭喜你完成了第 1 关！准备好进入下一关了吗？</p>
+            <div class="modal-buttons">
+                <button id="continueButton">继续</button>
+                <button id="exitButton">退出</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Celebration Overlay -->
+    <div id="celebrationOverlay" class="celebration-overlay"></div>
+
+    <!-- Music Toggle Button -->
+    <button id="musicToggleButton">🎵</button>
+
+    <!-- Audio Elements -->
+    <audio id="bgMusic" loop>
+        <!-- Use a placeholder or link to a royalty-free music file -->
+        <!-- Example: <source src="path/to/your/music.mp3" type="audio/mpeg"> -->
+    </audio>
+    <audio id="aggressiveMusic" loop>
+        <!-- Placeholder for more aggressive music -->
+        <!-- Example: <source src="path/to/your/aggressive_music.mp3" type="audio/mpeg"> -->
+    </audio>
+
+
+    <script>
+        const BOARD_WIDTH = 8;
+        const BOARD_HEIGHT = 8;
+        let TILE_TYPES = 6; // Number of different tile colors/types, increases with level
+        const SCORE_PER_BASIC_MATCH = 3; // Basic score per matched tile as requested
+        const COMBO_SCORE = 8; // Additional score for 4+ tile combos
+        let LEVEL_UP_SCORE_THRESHOLD = 100; // Score needed to level up, increases with level
+        const TILE_SIZE = 40; // in pixels, should match CSS --tile-size
+        const MAX_TILE_TYPES = 9; // Maximum number of tile types for increasing difficulty
+        const INITIAL_TILE_TYPES = 6;
+        const INITIAL_LEVEL_UP_SCORE_THRESHOLD = 100;
+        const MAX_LEVELS = 30; // Total number of levels
+        
+        const INITIAL_TIMER_SECONDS = 80; // Initial timer duration from level 10
+        const TIMER_REDUCTION_INTERVAL = 5; // Reduce timer every X levels
+        const TIMER_REDUCTION_AMOUNT = 10; // Amount to reduce timer by
+
+
+        let gameBoard = []; // 2D array representing the game board
+        let score = 0;
+        let level = 1;
+        let selectedTile = null; // Stores {row, col, element} of the first selected tile
+        let isProcessing = false; // Flag to prevent interactions during animations/processing
+        let currentTimer = 0;
+        let timerInterval = null;
+        let lastMatchCount = 0; // To track combo eligibility
+        let isMusicPlaying = false; // Track music state
+
+
+        const gameBoardElement = document.getElementById('gameBoard');
+        const scoreDisplay = document.getElementById('score');
+        const levelDisplay = document.getElementById('level');
+        const timerDisplayElement = document.getElementById('timer');
+        const timerContainer = document.querySelector('.timer-display');
+        const gameModal = document.getElementById('gameModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const continueButton = document.getElementById('continueButton');
+        const exitButton = document.getElementById('exitButton');
+        const celebrationOverlay = document.getElementById('celebrationOverlay');
+        const comboTextElement = document.getElementById('comboText');
+        const musicToggleButton = document.getElementById('musicToggleButton');
+
+        const bgMusic = document.getElementById('bgMusic');
+        const aggressiveMusic = document.getElementById('aggressiveMusic');
+
+        // Helper to get tile element by coordinates
+        function getTileElement(row, col) {
+            return document.querySelector(`.tile[data-row="${row}"][data-col="${col}"]`);
+        }
+
+        // Update score and level display
+        function updateDisplay() {
+            scoreDisplay.textContent = score;
+            levelDisplay.textContent = level;
+            timerDisplayElement.textContent = currentTimer;
+        }
+
+        // Generate a random tile type
+        function getRandomTileType() {
+            return Math.floor(Math.random() * TILE_TYPES);
+        }
+
+        // Create initial game board without any immediate matches
+        function createBoard() {
+            gameBoard = Array(BOARD_HEIGHT).fill(0).map(() => Array(BOARD_WIDTH).fill(0));
+
+            for (let r = 0; r < BOARD_HEIGHT; r++) {
+                for (let c = 0; c < BOARD_WIDTH; c++) {
+                    let newTileType;
+                    do {
+                        newTileType = getRandomTileType();
+                        gameBoard[r][c] = newTileType;
+                    } while (hasMatchAt(r, c)); // Ensure no immediate matches
+                }
+            }
+            updateDisplay();
+        }
+
+        // Check if a tile at (r, c) forms an immediate match
+        function hasMatchAt(r, c) {
+            const type = gameBoard[r][c];
+            if (type === null) return false;
+
+            // Check horizontal match
+            if (c > 1 && gameBoard[r][c - 1] === type && gameBoard[r][c - 2] === type) return true;
+            if (c < BOARD_WIDTH - 2 && gameBoard[r][c + 1] === type && gameBoard[r][c + 2] === type) return true;
+            if (c > 0 && c < BOARD_WIDTH - 1 && gameBoard[r][c - 1] === type && gameBoard[r][c + 1] === type) return true;
+
+            // Check vertical match
+            if (r > 1 && gameBoard[r - 1][c] === type && gameBoard[r - 2][c] === type) return true;
+            if (r < BOARD_HEIGHT - 2 && gameBoard[r + 1][c] === type && gameBoard[r + 2][c] === type) return true;
+            if (r > 0 && r < BOARD_HEIGHT - 1 && gameBoard[r - 1][c] === type && gameBoard[r + 1][c] === type) return true;
+
+            return false;
+        }
+
+        // Render the game board to the DOM
+        function renderBoard() {
+            gameBoardElement.innerHTML = ''; // Clear existing tiles
+            gameBoardElement.style.setProperty('--tile-size', `${TILE_SIZE}px`);
+
+            for (let r = 0; r < BOARD_HEIGHT; r++) {
+                for (let c = 0; c < BOARD_WIDTH; c++) {
+                    createTileElement(r, c, gameBoard[r][c]);
+                }
+            }
+        }
+        
+        function createTileElement(r, c, type) {
+            if (type === null) return; // Don't create element for null tiles
+            const tile = document.createElement('div');
+            tile.classList.add('tile', `type-${type}`);
+            tile.dataset.row = r;
+            tile.dataset.col = c;
+            tile.style.left = `${c * TILE_SIZE}px`;
+            tile.style.top = `${r * TILE_SIZE}px`;
+            gameBoardElement.appendChild(tile);
+            return tile;
+        }
+
+
+        // Check if two tiles are adjacent
+        function areAdjacent(tile1, tile2) {
+            const rowDiff = Math.abs(tile1.row - tile2.row);
+            const colDiff = Math.abs(tile1.col - tile2.col);
+            return (rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1);
+        }
+
+        // Swap tiles in the gameBoard data
+        function swapTilesData(tile1, tile2) {
+            const temp = gameBoard[tile1.row][tile1.col];
+            gameBoard[tile1.row][tile1.col] = gameBoard[tile2.row][tile2.col];
+            gameBoard[tile2.row][tile2.col] = temp;
+        }
+
+        // Visually swap tiles in the DOM
+        function swapTilesDOM(tile1, tile2) {
+            const tile1Elem = tile1.element;
+            const tile2Elem = tile2.element;
+
+            // Get current positions
+            const tile1Left = tile1Elem.style.left;
+            const tile1Top = tile1Elem.style.top;
+            const tile2Left = tile2Elem.style.left;
+            const tile2Top = tile2Elem.style.top;
+
+            // Apply new positions
+            tile1Elem.style.left = tile2Left;
+            tile1Elem.style.top = tile2Top;
+            tile2Elem.style.left = tile1Left;
+            tile2Elem.style.top = tile1Top;
+
+            // Update data attributes immediately for subsequent rendering/selection
+            tile1Elem.dataset.row = tile2.row;
+            tile1Elem.dataset.col = tile2.col;
+            tile2Elem.dataset.row = tile1.row;
+            tile2Elem.dataset.col = tile1.col;
+        }
+
+        // Find all matches on the board
+        function findMatches() {
+            const matches = new Set(); // Use a Set to store unique tile coordinates as strings "r,c"
+
+            // Check horizontal matches
+            for (let r = 0; r < BOARD_HEIGHT; r++) {
+                for (let c = 0; c < BOARD_WIDTH - 2; c++) {
+                    const type = gameBoard[r][c];
+                    if (type === null) continue; // Skip empty cells
+                    let currentMatchLength = 0;
+                    for(let k = c; k < BOARD_WIDTH; k++) {
+                        if (gameBoard[r][k] === type) {
+                            currentMatchLength++;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (currentMatchLength >= 3) {
+                        for (let k = 0; k < currentMatchLength; k++) {
+                            matches.add(`${r},${c + k}`);
+                        }
+                    }
+                }
+            }
+
+            // Check vertical matches
+            for (let c = 0; c < BOARD_WIDTH; c++) {
+                for (let r = 0; r < BOARD_HEIGHT - 2; r++) {
+                    const type = gameBoard[r][c];
+                    if (type === null) continue; // Skip empty cells
+                    let currentMatchLength = 0;
+                    for(let k = r; k < BOARD_HEIGHT; k++) {
+                        if (gameBoard[k][c] === type) {
+                            currentMatchLength++;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (currentMatchLength >= 3) {
+                        for (let k = 0; k < currentMatchLength; k++) {
+                            matches.add(`${r + k},${c}`);
+                        }
+                    }
+                }
+            }
+
+            // Convert set of strings back to array of {row, col} objects
+            return Array.from(matches).map(coord => {
+                const [row, col] = coord.split(',').map(Number);
+                return { row, col };
+            });
+        }
+
+        // Remove matched tiles from DOM
+        function removeMatchedTilesDOM(matchedTiles) {
+            matchedTiles.forEach(({ row, col }) => {
+                const tileElem = getTileElement(row, col);
+                if (tileElem) {
+                    tileElem.classList.add('matched'); // Trigger CSS shatter animation
+                    // Remove element after animation
+                    setTimeout(() => tileElem.remove(), 300); // Match animation duration
+                }
+            });
+        }
+
+        // Logic for dropping tiles down
+        async function dropTiles() {
+            let tilesMoved = false;
+            for (let c = 0; c < BOARD_WIDTH; c++) {
+                let emptySpaces = 0;
+                for (let r = BOARD_HEIGHT - 1; r >= 0; r--) {
+                    if (gameBoard[r][c] === null) {
+                        emptySpaces++;
+                    } else if (emptySpaces > 0) {
+                        // Move tile in data
+                        gameBoard[r + emptySpaces][c] = gameBoard[r][c];
+                        gameBoard[r][c] = null;
+
+                        // Move tile visually
+                        const tileElem = getTileElement(r, c);
+                        if (tileElem) {
+                            tileElem.dataset.row = r + emptySpaces; // Update data-row
+                            tileElem.style.top = `${(r + emptySpaces) * TILE_SIZE}px`;
+                        }
+                        tilesMoved = true;
+                    }
+                }
+            }
+            if (tilesMoved) {
+                await new Promise(resolve => setTimeout(resolve, 300)); // Wait for visual drop
+            }
+            return tilesMoved;
+        }
+
+        // Logic for refilling empty cells with new tiles
+        async function refillBoard() {
+            let tilesRefilled = false;
+            for (let c = 0; c < BOARD_WIDTH; c++) {
+                for (let r = 0; r < BOARD_HEIGHT; r++) {
+                    if (gameBoard[r][c] === null) {
+                        const newTileType = getRandomTileType();
+                        gameBoard[r][c] = newTileType;
+                        const newTileElem = createTileElement(r, c, newTileType);
+                        // Make new tiles appear from above
+                        if (newTileElem) {
+                            newTileElem.style.top = `${(r - BOARD_HEIGHT) * TILE_SIZE}px`; // Start off-screen above
+                            // Force reflow for transition to work
+                            newTileElem.offsetHeight;
+                            newTileElem.style.top = `${r * TILE_SIZE}px`; // Animate to final position
+                        }
+                        tilesRefilled = true;
+                    }
+                }
+            }
+            if (tilesRefilled) {
+                await new Promise(resolve => setTimeout(resolve, 300)); // Wait for new tiles to fall in
+            }
+            return tilesRefilled;
+        }
+
+        // Trigger a celebration effect (confetti)
+        function triggerCelebration() {
+            celebrationOverlay.style.display = 'block';
+            const colors = ['#FFD700', '#FF4500', '#DA70D6', '#00BFFF', '#ADFF2F']; // Gold, OrangeRed, Orchid, DeepSkyBlue, GreenYellow
+            for (let i = 0; i < 50; i++) { // Generate 50 confetti pieces
+                const confetti = document.createElement('div');
+                confetti.classList.add('confetti');
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.left = `${Math.random() * 100}vw`;
+                confetti.style.animationDuration = `${Math.random() * 2 + 3}s`; // 3-5 seconds
+                confetti.style.animationDelay = `${Math.random() * 0.5}s`;
+                celebrationOverlay.appendChild(confetti);
+            }
+            setTimeout(() => {
+                celebrationOverlay.innerHTML = '';
+                celebrationOverlay.style.display = 'none';
+            }, 5000); // Remove confetti after 5 seconds
+        }
+
+        // Show "Combo!" text
+        function showComboText() {
+            comboTextElement.textContent = 'Combo!';
+            comboTextElement.style.opacity = 1;
+            comboTextElement.style.animation = 'none'; // Reset animation
+            // Trigger reflow to restart animation
+            void comboTextElement.offsetWidth; 
+            comboTextElement.style.animation = 'comboPop 1s forwards';
+        }
+
+        // Process found matches: remove from board, update score, initiate drop
+        async function processMatches(matchedTiles) {
+            isProcessing = true; // Keep interactions blocked
+
+            // Visually remove tiles
+            removeMatchedTilesDOM(matchedTiles);
+
+            // Update score
+            score += matchedTiles.length * SCORE_PER_BASIC_MATCH;
+            if (lastMatchCount >= 1 && matchedTiles.length >= 4) { // Combo logic: Consecutive match of 4+
+                score += COMBO_SCORE;
+                showComboText();
+            }
+            lastMatchCount = matchedTiles.length >= 4 ? lastMatchCount + 1 : 0; // Reset if not a 4+ match
+            updateDisplay();
+
+            // Clear matched tiles from gameBoard data (set to null)
+            matchedTiles.forEach(({ row, col }) => {
+                gameBoard[row][col] = null;
+            });
+
+            // Wait for visual removal animation to complete
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // Drop existing tiles
+            const dropped = await dropTiles();
+
+            // Refill empty spaces
+            const refilled = await refillBoard();
+            
+            // After dropping and refilling, check for new matches (cascading effect)
+            const newMatches = findMatches();
+            if (newMatches.length > 0) {
+                await processMatches(newMatches); // Recursively process cascading matches
+            } else {
+                // No more matches, check for level up or game over
+                if (score >= LEVEL_UP_SCORE_THRESHOLD) {
+                    stopTimer(); // Stop timer before modal
+                    triggerCelebration(); // Celebration effect
+                    showModal('关卡完成!', `恭喜你完成了第 ${level} 关！获得 ${score} 分！准备好进入下一关了吗？`, 'levelUp');
+                } else if (!hasPossibleMoves()) {
+                    stopTimer(); // Stop timer before modal
+                    showModal('游戏结束!', `没有更多可移动的方块了。你的最终关卡是: ${level}, 最终分数是: ${score}。`, 'gameOver');
+                } else {
+                    isProcessing = false; // Release lock only when all cascades are done and no level up or game over
+                }
+            }
+        }
+
+        // Helper to check for matches after a temporary swap
+        function checkMatchAfterSwap(r1, c1, r2, c2) {
+            // Temporarily swap
+            [gameBoard[r1][c1], gameBoard[r2][c2]] = [gameBoard[r2][c2], gameBoard[r1][c1]];
+
+            const hasNewMatch = findMatches().length > 0;
+
+            // Swap back
+            [gameBoard[r1][c1], gameBoard[r2][c2]] = [gameBoard[r2][c2], gameBoard[r1][c1]];
+
+            return hasNewMatch;
+        }
+
+        // Check if there are any possible moves left on the board
+        function hasPossibleMoves() {
+            for (let r = 0; r < BOARD_HEIGHT; r++) {
+                for (let c = 0; c < BOARD_WIDTH; c++) {
+                    // Check right swap
+                    if (c < BOARD_WIDTH - 1) {
+                        if (checkMatchAfterSwap(r, c, r, c + 1)) return true;
+                    }
+                    // Check down swap
+                    if (r < BOARD_HEIGHT - 1) {
+                        if (checkMatchAfterSwap(r, c, r + 1, c)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // Handle tile click events
+        gameBoardElement.addEventListener('click', async (event) => {
+            if (isProcessing) return;
+
+            const clickedTileElement = event.target.closest('.tile');
+            if (!clickedTileElement) return;
+
+            const clickedTile = {
+                row: parseInt(clickedTileElement.dataset.row),
+                col: parseInt(clickedTileElement.dataset.col),
+                element: clickedTileElement
+            };
+
+            if (!selectedTile) {
+                // First tile selected
+                selectedTile = clickedTile;
+                clickedTileElement.classList.add('selected');
+            } else {
+                // Second tile selected
+                if (selectedTile.row === clickedTile.row && selectedTile.col === clickedTile.col) {
+                    // Clicked the same tile again, deselect
+                    selectedTile.element.classList.remove('selected');
+                    selectedTile = null;
+                    return;
+                }
+
+                if (areAdjacent(selectedTile, clickedTile)) {
+                    isProcessing = true; // Block further clicks
+                    selectedTile.element.classList.remove('selected');
+
+                    // Perform visual swap
+                    swapTilesDOM(selectedTile, clickedTile);
+
+                    // Perform data swap
+                    swapTilesData(selectedTile, clickedTile);
+
+                    // Re-evaluate current selectedTile and clickedTile after visual swap for match check
+                    const firstSwapped = {
+                        row: clickedTile.row,
+                        col: clickedTile.col,
+                        element: clickedTile.element
+                    };
+                    const secondSwapped = {
+                        row: selectedTile.row,
+                        col: selectedTile.col,
+                        element: selectedTile.element
+                    };
+
+                    // After visual swap, check for matches
+                    await new Promise(resolve => setTimeout(resolve, 200)); // Allow time for initial swap animation
+                    
+                    const matches = findMatches();
+                    if (matches.length > 0) {
+                        // Valid swap, matches found, process them
+                        await processMatches(matches);
+                    } else {
+                        // No matches, swap back visually and in data
+                        swapTilesDOM(firstSwapped, secondSwapped); // Swap them back visually
+                        swapTilesData(firstSwapped, secondSwapped); // Swap them back in data
+                        await new Promise(resolve => setTimeout(resolve, 300)); // Allow time for swap-back animation
+                        isProcessing = false;
+                    }
+                    selectedTile = null;
+                } else {
+                    // Not adjacent, deselect first tile and select new one
+                    selectedTile.element.classList.remove('selected');
+                    selectedTile = clickedTile;
+                    clickedTileElement.classList.add('selected');
+                }
+            }
+        });
+
+        // Timer Functions
+        function startTimer() {
+            stopTimer(); // Clear any existing timer
+            let timeForLevel = INITIAL_TIMER_SECONDS;
+            if (level >= 10) {
+                const reductions = Math.floor((level - 10) / TIMER_REDUCTION_INTERVAL);
+                timeForLevel = Math.max(10, INITIAL_TIMER_SECONDS - (reductions * TIMER_REDUCTION_AMOUNT)); // Min 10 seconds
+                timerContainer.style.display = 'flex'; // Show timer
+            } else {
+                timerContainer.style.display = 'none'; // Hide timer
+            }
+            currentTimer = timeForLevel;
+            updateDisplay();
+
+            if (level >= 10) { // Only start interval if timer is active
+                timerInterval = setInterval(() => {
+                    currentTimer--;
+                    updateDisplay();
+                    if (currentTimer <= 0) {
+                        stopTimer();
+                        showModal('时间到!', `时间用完了。你的最终关卡是: ${level}, 最终分数是: ${score}。`, 'gameOver');
+                    }
+                }, 1000);
+            }
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+        
+        // Modal functions
+        function showModal(title, message, type) {
+            stopTimer(); // Stop timer when modal is shown
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            if (type === 'levelUp') {
+                continueButton.textContent = '继续';
+                exitButton.textContent = '退出游戏';
+                continueButton.onclick = levelUp;
+                exitButton.onclick = () => {
+                    startGame(true); // Restart game from level 1
+                    hideModal();
+                };
+            } else if (type === 'gameOver') {
+                continueButton.textContent = '重新开始';
+                exitButton.textContent = '退出'; // Changed text to exit
+                exitButton.style.display = ''; // Ensure exit button is visible
+                continueButton.onclick = () => {
+                    startGame(true); // Restart game from level 1
+                    hideModal();
+                };
+                exitButton.onclick = () => {
+                    alert('游戏已退出。');
+                    // Optionally perform cleanup or redirect
+                    hideModal();
+                };
+            }
+            gameModal.style.display = 'flex';
+            isProcessing = true; // Keep game paused
+        }
+
+        function hideModal() {
+            gameModal.style.display = 'none';
+            isProcessing = false; // Release game pause
+            exitButton.style.display = ''; // Ensure exit button is visible for next level up
+        }
+
+        // Function to start/restart the game
+        function startGame(resetAll = false) {
+            if (resetAll) {
+                level = 1;
+                score = 0;
+                TILE_TYPES = INITIAL_TILE_TYPES;
+                LEVEL_UP_SCORE_THRESHOLD = INITIAL_LEVEL_UP_SCORE_THRESHOLD;
+                lastMatchCount = 0; // Reset combo tracker
+            }
+            if (level > MAX_LEVELS) {
+                showModal('恭喜!', `你已经完成了所有 ${MAX_LEVELS} 关！真是太棒了！你的最终分数是: ${score}。`, 'gameOver'); // Reuse game over for completion
+                return;
+            }
+            selectedTile = null;
+            isProcessing = false;
+            createBoard();
+            renderBoard();
+            updateDisplay();
+            hideModal();
+            startTimer(); // Start timer for the new level
+            playMusic(level >= 10); // Play aggressive music from level 10
+        }
+
+        function levelUp() {
+            level++;
+            score = 0; 
+            LEVEL_UP_SCORE_THRESHOLD += 50 * level; 
+            TILE_TYPES = Math.min(TILE_TYPES + 1, MAX_TILE_TYPES); 
+            startGame(); // Start new level
+        }
+
+        // Music functions (placeholder, as actual audio files are not provided)
+        let isMusicMuted = false;
+        function playMusic(aggressive = false) {
+            if (isMusicMuted) return; // Don't play if muted
+
+            if (aggressive && aggressiveMusic.currentSrc) {
+                bgMusic.pause();
+                aggressiveMusic.currentTime = 0; // Reset to start
+                aggressiveMusic.play().catch(e => console.error("Aggressive music autoplay failed:", e));
+            } else if (bgMusic.currentSrc) {
+                aggressiveMusic.pause();
+                bgMusic.currentTime = 0; // Reset to start
+                bgMusic.play().catch(e => console.error("Background music autoplay failed:", e));
+            } else {
+                console.warn("No background music source provided. Add <source src='path/to/music.mp3' type='audio/mpeg'> to audio tags.");
+            }
+        }
+
+        function stopMusic() {
+            bgMusic.pause();
+            aggressiveMusic.pause();
+            bgMusic.currentTime = 0;
+            aggressiveMusic.currentTime = 0;
+        }
+
+        musicToggleButton.addEventListener('click', () => {
+            isMusicMuted = !isMusicMuted;
+            if (isMusicMuted) {
+                stopMusic();
+                musicToggleButton.textContent = '🔇'; // Muted icon
+            } else {
+                playMusic(level >= 10);
+                musicToggleButton.textContent = '🎵'; // Playing icon
+            }
+        });
+
+        // Call playMusic to start background music when the page loads.
+        // Note: Browsers may block autoplay if not triggered by user interaction.
+        document.addEventListener('DOMContentLoaded', () => {
+            // A common workaround for autoplay restrictions is to play on first user interaction
+            document.body.addEventListener('click', () => {
+                if (!isMusicMuted) {
+                    playMusic(level >= 10);
+                }
+            }, { once: true });
+        });
+
+        // Touch swipe variables
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchEndX = 0;
+        let touchEndY = 0;
+        const SWIPE_THRESHOLD = 30; // Minimum pixels for a swipe to register
+
+        gameBoardElement.addEventListener('touchstart', (event) => {
+            if (isProcessing) return;
+            event.preventDefault(); // Prevent scrolling
+            const touch = event.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+            const targetTileElement = event.target.closest('.tile');
+            if (targetTileElement) {
+                selectedTile = {
+                    row: parseInt(targetTileElement.dataset.row),
+                    col: parseInt(targetTileElement.dataset.col),
+                    element: targetTileElement
+                };
+                selectedTile.element.classList.add('selected');
+            }
+        }, { passive: false }); // Use { passive: false } to allow preventDefault
+
+        gameBoardElement.addEventListener('touchmove', (event) => {
+            if (!selectedTile || isProcessing) return;
+            event.preventDefault(); // Prevent scrolling
+            const touch = event.touches[0];
+            touchEndX = touch.clientX;
+            touchEndY = touch.clientY;
+        }, { passive: false });
+
+        gameBoardElement.addEventListener('touchend', async (event) => {
+            if (!selectedTile || isProcessing) {
+                if (selectedTile) selectedTile.element.classList.remove('selected');
+                selectedTile = null;
+                return;
+            }
+
+            const dx = touchEndX - touchStartX;
+            const dy = touchEndY - touchStartY;
+
+            selectedTile.element.classList.remove('selected'); // Deselect the initial tile
+
+            if (Math.abs(dx) > SWIPE_THRESHOLD || Math.abs(dy) > SWIPE_THRESHOLD) {
+                let targetRow = selectedTile.row;
+                let targetCol = selectedTile.col;
+
+                if (Math.abs(dx) > Math.abs(dy)) { // Horizontal swipe
+                    if (dx > 0) targetCol++; // Swipe right
+                    else targetCol--; // Swipe left
+                } else { // Vertical swipe
+                    if (dy > 0) targetRow++; // Swipe down
+                    else targetRow--; // Swipe up
+                }
+
+                // Check if target is within bounds
+                if (targetRow >= 0 && targetRow < BOARD_HEIGHT &&
+                    targetCol >= 0 && targetCol < BOARD_WIDTH) {
+                    
+                    const targetTileElement = getTileElement(targetRow, targetCol);
+                    if (targetTileElement) {
+                        const targetTile = {
+                            row: targetRow,
+                            col: targetCol,
+                            element: targetTileElement
+                        };
+
+                        if (areAdjacent(selectedTile, targetTile)) {
+                            // Valid swipe, proceed with swap logic as in click handler
+                            isProcessing = true; // Block further interactions
+
+                            swapTilesDOM(selectedTile, targetTile);
+                            swapTilesData(selectedTile, targetTile);
+
+                            const firstSwapped = {
+                                row: targetTile.row,
+                                col: targetTile.col,
+                                element: targetTile.element
+                            };
+                            const secondSwapped = {
+                                row: selectedTile.row,
+                                col: selectedTile.col,
+                                element: selectedTile.element
+                            };
+
+                            await new Promise(resolve => setTimeout(resolve, 200));
+
+                            const matches = findMatches();
+                            if (matches.length > 0) {
+                                await processMatches(matches);
+                            } else {
+                                swapTilesDOM(firstSwapped, secondSwapped);
+                                swapTilesData(firstSwapped, secondSwapped);
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                                isProcessing = false;
+                            }
+                        }
+                    }
+                }
+            }
+            selectedTile = null;
+            touchStartX = 0;
+            touchStartY = 0;
+            touchEndX = 0;
+            touchEndY = 0;
+        });
+
+
+        // Initial game setup
+        startGame(true); // Start a brand new game
+    </script>
+</body>
+</html>
